@@ -14,7 +14,7 @@
     <script type="text/javascript">
         $.mobile.defaultPageTransition = 'none';
         Settings = localStorage.settings ? JSON.parse(localStorage.settings) : {player:{life:40,poison:0,commander:0},common:['Me']};
-        PlayersCollection = [{name:'Me',life:40,poison:0,commander:0}];
+        PlayersCollection = [];
         $(document).on('tap','a[data-action=clear]',function(ev){
             PlayersCollection = [];
             $('#player-set').html('');
@@ -24,6 +24,10 @@
             });
             $('#player-set').find('.player').trigger('player:update');
         }).on('tap','a[data-action=save]',function(ev){
+			Settings.player = {life: $("#default-life").val()*1};
+			_.each($("#default-counters").val().split(" "),function(c){
+			    if(c!="") Settings.player[c] = 0;
+		    });
             localStorage.settings = JSON.stringify(Settings);
         }).on('tap','a[data-action=unsave]',function(ev){
             localStorage.clear();
@@ -31,11 +35,11 @@
         }).on('tap','.player .change-life a',function(ev){
             var value = parseInt($(this).text());
             var player = $(this).closest('.player').data('model');
-			if (!player.oldlife) {player.oldlife = +player.life+' > ';}
+			if (!player.oldlife) {player.oldlife = +player.life+' >&nbsp;';}
 			Timer.start();
 			player.life += value;
             $(this).trigger('player:update');
-        }).on('tap swipe','.player .add-counters a',function(ev){
+        }).on('tap swipe','.player a[data-ctype]',function(ev){
             var player = $(this).closest('.player').data('model');
             player[$(this).data('ctype')] += (ev.type=='tap')?1:-1;
             $(this).trigger('player:update');
@@ -44,7 +48,7 @@
             var template = _.template($('#player-template').text());
             $('#player-set').empty();
             _.each(PlayersCollection, function(data){
-                $(template(data)).appendTo('#player-set').data('model',data);
+                $(template({player: data})).appendTo('#player-set').data('model',data);
             });
             $('#player-set').trigger('create');
         }).on('pagebeforeshow','#add',function(ev){
@@ -59,11 +63,18 @@
                 $.mobile.changePage('#list');
                 return false;
             })
+        }).on('pagebeforeshow','#settings',function(ev){
+            $('#default-life').val(Settings.player.life);
+			var counters = "";
+			_.each(Settings.player, function(val,key){
+				if(key!="life") counters += key+" ";
+			});
+			$('#default-counters').val(counters);
         }).on('player:update','.player',function(ev){
             var el = $(this);
             var model = el.data('model');
             _.each(model,function(val,key){
-                el.find('.'+key).text(val);
+                el.find('.'+key).html(val);
             });
 			if (model.oldlife) el.find('.oldlife').show();
 			else el.find('.oldlife').hide();
@@ -114,24 +125,23 @@
             Anything
             <div data-role="collapsible" class="player">
                 <h3>
-                    <span class="name"><%= name %></span>
-                    <span class="life"><%= life %></span>
+                    <span class="name"><%= player.name %></span>
+                    <span class="life"><%= player.life %></span>
                     <span class="oldlife"></span>
                 </h3>
-                <p><div data-role="controlgroup" data-type="horizontal" class="change-life">
+                <p>
+				<div data-role="controlgroup" data-type="horizontal" class="change-life">
                     <a href="#" data-role="button">+5</a>
                     <a href="#" data-role="button">+1</a>
                     <a href="#" data-role="button">-1</a>
                     <a href="#" data-role="button">-5</a>
                 </div>
-                <div data-role="controlgroup" data-type="horizontal" class="add-counters">
-                    <a href="#" data-role="button" data-ctype="poison">
-                        Poison (<span class="poison">0</span>)
-                    </a>
-                    <a href="#" data-role="button" data-ctype="commander">
-                        Commander (<span class="commander">0</span>)
-                    </a>
-                </div></p>
+				<% _.each(player,function(val,key){ if(key=="life" || key=="name") return; %>
+                <a href="#" data-role="button" data-ctype="<%= key %>" data-inline="true">
+                   <%= key %> (<span class="<%= key %>">0</span>)
+                </a>
+				<% }); %>
+                </p>
             </div>
         </script>
     </div><!-- /content -->
@@ -180,6 +190,10 @@
     
     <div data-role="content">
 		<p>Settings data (like favourite player names) will be persistently stored in localStorage.</p>
+        <label for="default-life">Starting points:</label>
+		<input id="default-life" name="life" type="number" value=""/>
+        <label for="default-counters">Additional counter types:</label>
+		<input id="default-counters" name="counters" type="text" value=""/>
         <a href="#list" data-role="button" data-rel="back" data-action="save">Save Settings</a>
         <a href="#" data-role="button" data-action="unsave">Clear Settings</a>
     </div><!-- /content -->
