@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/html" manifest="cga.appcache">
+<head>
+    <title>2DG-CGA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <style type="text/css">
+		* {box-sizing: border-box;}
+		body {font-family: sans-serif; margin:0; background:#333; text-shadow: 0 0 3px black; color:white;}
+		body > div {background:inherit;}
+		[data-role=page] {width:100%; padding: 1em 1em 8em;}
+		[data-role=header] h1 {margin:0;}
+		[data-role=flyout] {position:fixed; bottom:0; width:100%; display:none; padding:2em;}
+		.appbar {position:fixed; bottom:0; left:0; width:100%; padding:1em 0; text-align:center; background: inherit;}
+		.appbar a {display:inline-block;}
+		a {text-decoration:none; color: white; padding:1em; border: 1px solid white; background-color:rgb(0,120,0); box-shadow: 0 0 3px black;}
+		
+		.player.collapsed > div {display:none;}
+		.player h3 {padding:1em; border: 1px solid white; background-color:rgb(0,120,0); box-shadow: 0 0 3px black;}
+        .player .life {float: right;}
+        .player .oldlife {float: right;}
+		
+		form * {font-size:large;}
+		fieldset label {display:block;}
+		form input[type=text], form input[type=submit] {display:block; height:36px; width:100%;}
+    </style>
+    <script src="jquery-1.8.3.min.js"></script>
+    <script src="underscore-min.js"></script>
+    <script type="text/javascript">
+	    var defaults = {startingPlayer:{life:40,poison:0,commander:0},common:['Me']};
+        var settings = localStorage.settings ? JSON.parse(localStorage.settings) : defaults;
+        var playersCollection = [];
+		var templates;
+		var actions = {
+			clearPlayers: function(ev){
+				playersCollection = [];
+				$('#player-set').html('');
+			},
+			resetGame: function(ev){
+				_.each(playersCollection,function(player){
+					_.extend(player,settings.startingPlayer);
+				});
+				$('#player-set').find('.player').trigger('player:update');
+			},
+			saveSettings: function(ev){
+				settings.startingPlayer = {life: $("#default-life").val()*1};
+				_.each($("#default-counters").val().split(" "),function(c){
+					if(c!="") settings.player[c] = 0;
+				});
+				localStorage.settings = JSON.stringify(settings);
+			},
+			forgetAll: function(ev){
+				localStorage.clear();
+				location.reload(true);
+			},
+			modifyPlayer: function(ev){
+				var values = $(this).data('mod');
+				var player = $(this).closest('.player').data('model');
+				
+				if (values.life && !player.oldlife)
+					{ player.oldlife = +player.life+' >&nbsp;'; }
+				for (var key in values) { player[key] += values[key]; }
+				
+				Timer.start();
+				$(this).trigger('player:update');
+			},
+			showPlayerMenu: function(ev){
+				var result = templates.picklist({list: settings.common});
+				$('#fast-add-list').html(result);
+				$('#add-players-flyout').show();
+			},
+			toggleSplash: function(ev){
+				$('#welcome').toggle();
+			}
+		};
+		var playerProto = {
+			render: function(){
+                $(templates.playerBlock({player: this})).appendTo('#player-set')
+				    .data('model',this).bind('player:update',playerProto.update.bind(this));
+			},
+			update: function(){
+			}
+		};			
+
+		$(function(){ /* onPageReady initialization */
+			$(document).on('touchstart','[data-action]',function(event){
+				var $el = $(event.currentTarget);
+				var actionName = $el.data('action');
+				actions[actionName].call($el, event);
+			}).on('player:update','.player',function(event){
+				var data = $(this).data('model');
+				_.each(data,function(val,key){
+					$(event.currentTarget).find('.'+key).html(val);
+				});
+				if (data.oldlife) $(this).find('.oldlife').show();
+				else $(this).find('.oldlife').hide();
+			}).on('touchend','.player',function(event){
+				Timer.start();
+				$('.player').addClass('collapsed');
+				$(this).removeClass('collapsed');
+			});
+			$('#add-player-form').bind('submit',function(ev){
+				ev.preventDefault();
+				_.each($(this).serializeArray(),function(a){
+					if(a.value=='on') addPlayer(a.name);
+					if(a.name=='name' && a.value.length > 0) addPlayer(a.value);
+				});
+				this.reset();
+				$('#add-players-flyout').hide();
+				localStorage.settings = JSON.stringify(settings);
+			});
+			templates = {
+				playerBlock: _.template($('#player-template').text()),
+				picklist: _.template($('#checkbox-template').text()),
+			};
+			if (!localStorage.settings) actions.toggleSplash();
+		});
+        function addPlayer(name) {
+            var data = _.extend({},settings.startingPlayer,{name: name});
+            playersCollection.push(data);
+			playerProto.render.call(data);
+            settings.common.splice(0,0,name);//push as first
+            settings.common = _.uniq(settings.common);//no multiplies
+            settings.common.splice(10,10);//max 10 remembered
+        };
+		var Timer = {
+			count: 0,
+			start: function(){Timer.count++;setTimeout(this.stop,3000);},
+			stop: function(){Timer.count--;if(Timer.count==0)Timer.action();},
+			action: function(){
+				_.each(playersCollection,function(player){delete player.oldlife;});
+				$('.player').addClass('collapsed').trigger('player:update');
+			}
+		};
+    </script>
+</head>
+<body>
+
+<div data-role="page" id="list">
+
+    <div data-role="header" data-action="toggleSplash">
+        <h1>2DG - CGA</h1>
+    </div><!-- /header -->
+
+    <div data-role="content">
+        <div id="player-set">
+        </div>
+        <script id="player-template" type="text/template">
+            <div class="player collapsed">
+                <h3>
+                    <span class="name"><%= player.name %></span>
+                    <span class="life"><%= player.life %></span>
+                    <span class="oldlife"></span>
+                </h3>
+				<div class="change-life">
+                    <a href="#" data-action="modifyPlayer" data-mod='{"life":  5}'>+5</a>
+                    <a href="#" data-action="modifyPlayer" data-mod='{"life":  1}'>+1</a>
+                    <a href="#" data-action="modifyPlayer" data-mod='{"life": -1}'>-1</a>
+                    <a href="#" data-action="modifyPlayer" data-mod='{"life": -5}'>-5</a>
+                </div>
+            </div>
+        </script>
+    </div><!-- /content -->
+
+    <div data-role="footer" class="appbar">
+		<a href="#" data-action="showPlayerMenu">Add</a>
+		<a href="#" data-action="resetGame">Reset Game</a>
+	    <a href="#" data-action="clearPlayers">Remove All</a>
+	    <a href="#" data-action="showSettings" style="display:none;">Settings</a>
+    </div><!-- /footer -->
+
+</div><!-- /page -->
+
+<div data-role="flyout" id="welcome" data-action="toggleSplash">
+    <div data-role="header">
+        <h1>2DG - CGA</h1>
+    </div><!-- /header -->
+
+    <div data-role="content">
+		<p>Card Game Assistant is designed to help you track points in your favourite traditional game.</p>
+		<p>Tap players to edit them. Tap buttons to add or sub points. Your last added nicknames are saved automatically on your phone.</p>
+		<p>This application caches itself in your browser so it should be always available offline, feel free to bookmark it and treat it like a store app.</p>
+        <p>Tap on this popup to dismiss it. You can read it again by tapping on title!</p>
+    </div><!-- /content -->
+</div><!-- /page -->
+
+<div data-role="flyout" id="add-players-flyout">
+
+    <div data-role="header">
+        <h1>Add players</h1>
+    </div><!-- /header -->
+    
+    <div data-role="content">
+        <form action="" method="post" id="add-player-form">
+            <input type="submit" value="Add player(s)"/>
+            <input type="text" name="name" value="" placeholder="insert new name"/>
+            <div id="fast-add-list"></div>
+            <script id="checkbox-template" type="text/template">
+              <fieldset>
+                <legend>Previously added:</legend>
+                <% _.each(list,function(name){ %>
+                <label><input type="checkbox" name="<%= name %>"/><%= name %></label>
+                <% }); %>
+              </fieldset>
+            </script>
+        </form>
+    </div><!-- /content -->
+
+</div><!-- /page -->
+
+<div data-role="flyout" id="settings" style="display: none;">
+
+    <div data-role="header" data-id="head" data-position="fixed">
+        <h1>Settings</h1>
+    </div><!-- /header -->
+    
+    <div data-role="content">
+		<p>Settings data (like favourite player names) will be persistently stored in localStorage.</p>
+        <label for="default-life">Starting points:</label>
+		<input id="default-life" name="life" type="number" value=""/>
+        <label for="default-counters">Additional counter types:</label>
+		<input id="default-counters" name="counters" type="text" value=""/>
+    </div><!-- /content -->
+
+    <div data-role="footer" class="ui-bar" data-position="fixed">
+        <a href="#" data-action="save">Save Settings</a>
+        <a href="#" data-action="unsave">Clear Settings</a>
+		<a href="#" data-action="delete">Cancel</a>
+    </div><!-- /footer -->
+	
+</div><!-- /page -->
+
+</body>
+</html>
